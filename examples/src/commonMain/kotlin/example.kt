@@ -5,7 +5,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
 
 fun jsExample() {
     val ctx = JSContext {
@@ -54,7 +53,7 @@ fun jsExample() {
                 }
                 ctx.eval(
                     """
-                mytimes(1, 2)
+                mytimes(3, 2)
             """.trimIndent()
                 )?.use {
                     println(it)
@@ -70,7 +69,6 @@ fun jsExample() {
                         (it as JsValue.JsPromise).await()?.free()
                     }
                 println("cost ${Clock.System.now().toEpochMilliseconds() - start}ms")
-                delay(10.minutes)
             } catch (e: Throwable) {
                 e.printStackTrace()
             }

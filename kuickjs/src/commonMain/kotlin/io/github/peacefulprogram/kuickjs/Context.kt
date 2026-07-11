@@ -486,6 +486,21 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         return parseOwnedJsValue(result)
     }
 
+    suspend fun dispose(){
+        if (disposed) return
+        runInJsThread {
+            if (disposed) return@runInJsThread
+            disposed = true
+            JsPlatform.freeContext(context)
+            freeRuntime(runtime)
+            contextMap.remove(contextId)
+            promiseMap.clear()
+            userFunctions.clear()
+            userAsyncFunctions.clear()
+            dispatcher.cancel()
+        }
+    }
+
 
     companion object {
 

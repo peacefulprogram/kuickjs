@@ -1,12 +1,18 @@
-plugins{
+plugins {
     alias(libs.plugins.kotlinMultiplatform)
 }
 
 kotlin {
     jvm()
-    mingwX64()
-    linuxX64()
-    macosArm64()
+    listOf(
+        mingwX64(),
+        linuxX64(),
+        macosArm64()
+    ).forEach {
+        it.binaries {
+            executable()
+        }
+    }
 
     applyDefaultHierarchyTemplate()
     sourceSets {
