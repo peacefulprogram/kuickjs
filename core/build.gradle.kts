@@ -1,0 +1,303 @@
+@file:OptIn(ExperimentalKotlinGradlePluginApi::class)
+
+import com.dshatz.kni.bundlesNatives
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import java.net.URI
+import java.util.zip.ZipInputStream
+
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(libs.plugins.vanniktech.mavenPublish)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kni)
+}
+
+group = "io.github.peacefulprogram"
+version = "1.0.0"
+
+kni {
+    autoWire {
+        kspDependency.set(libs.kni.processor)
+    }
+}
+
+
+kotlin {
+
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
+    tvosX64()
+    tvosArm64()
+    tvosSimulatorArm64()
+
+    watchosArm32()
+    watchosArm64()
+    watchosSimulatorArm64()
+    watchosX64()
+    watchosDeviceArm64()
+
+    val desktopTargets = listOf(
+        linuxX64(),
+        linuxArm64(),
+        macosX64(),
+        macosArm64(),
+        mingwX64()
+    )
+
+    val androidNativeTargets = listOf(
+        androidNativeX64(),
+        androidNativeArm32(),
+        androidNativeArm64(),
+        androidNativeX86(),
+    )
+
+    desktopTargets.forEach { it.binaries.sharedLib() }
+    androidNativeTargets.forEach { it.binaries.sharedLib() }
+
+    jvm() bundlesNatives desktopTargets
+
+    androidLibrary {
+        namespace = "io.github.peacefulprogram.kuickjs"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+
+        withJava() // enable java compilation support
+        withHostTestBuilder {}.configure {}
+        withDeviceTestBuilder {
+            sourceSetTreeName = "test"
+        }
+
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_11
+        }
+        bundlesNatives(androidNativeTargets)
+    }
+
+    targets.withType(KotlinNativeTarget::class.java).forEach { target ->
+        target.compilations.getByName("main") {
+            cinterops.create("quickjs") {
+                definitionFile.set(file("src/cinterop/quickjs.def"))
+                includeDirs(file("headers"))
+            }
+        }
+    }
+
+    applyDefaultHierarchyTemplate {
+        group("native32") {
+            withAndroidNativeX86()
+            withAndroidNativeArm32()
+            withWatchosArm32()
+            withWatchosArm64() // pointer length is 32bit
+        }
+
+        group("native64") {
+            withAndroidNativeArm64()
+            withAndroidNativeX64()
+            withIos()
+            withTvos()
+            withWatchosDeviceArm64()
+            withWatchosX64()
+            withWatchosSimulatorArm64()
+            withMacos()
+            withMingw()
+            withLinux()
+        }
+    }
+
+    sourceSets {
+        val nativeMain by getting
+        val native32Main by getting {
+            dependsOn(nativeMain)
+        }
+        val native64Main by getting {
+            dependsOn(nativeMain)
+        }
+
+        val nativeTest by getting
+        val native32Test by getting {
+            dependsOn(nativeTest)
+        }
+        val native64Test by getting {
+            dependsOn(nativeTest)
+        }
+        commonMain.dependencies {
+            //put your multiplatform dependencies here
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kni.annotations)
+        }
+
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
+
+        val jniJvmMain by getting
+        val jniNativeMain by getting
+        jniJvmMain.dependencies {
+            api(libs.kni)
+        }
+        jniNativeMain.dependencies {
+            api(libs.kni)
+        }
+    }
+
+    sourceSets.all {
+        languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
+    }
+//    sourceSets.forEach { sourceSet ->
+//        if (sourceSet.name.startsWith("jvm")
+//            || sourceSet.name.startsWith("android")
+//            || sourceSet.name.startsWith("linux")
+//            || sourceSet.name.startsWith("macos")
+//            || sourceSet.name.startsWith("mingw")
+//            ) {
+//            sourceSet.dependencies {
+//                api(libs.kni)
+//            }
+//        }
+//    }
+}
+
+mavenPublishing {
+    publishToMavenCentral()
+
+    signAllPublications()
+
+    coordinates(group.toString(), "library", version.toString())
+
+    pom {
+        name = "kuickjs"
+        description = "A quickjs for kotlin multiplatform library."
+        inceptionYear = "2024"
+        url = "https://github.com/peacefulprogram/kuickjs"
+        licenses {
+            license {
+                name = "XXX"
+                url = "YYY"
+                distribution = "ZZZ"
+            }
+        }
+        developers {
+            developer {
+                id = "XXX"
+                name = "YYY"
+                url = "ZZZ"
+            }
+        }
+        scm {
+            url = "XXX"
+            connection = "YYY"
+            developerConnection = "ZZZ"
+        }
+    }
+}
+
+val downloadQuickJsLib by tasks.registering {
+
+    description = "download quickjs static library + headers"
+
+    val libDir = layout.projectDirectory.dir("lib").asFile
+    val headersDir = layout.projectDirectory.dir("headers").asFile
+
+    val quickJsZip = File(libDir, "quickjs.zip")
+    val quickJsHeader = File(headersDir, "quickjs.h")
+
+    outputs.dir(libDir)
+    outputs.dir(headersDir)
+
+    doLast {
+        libDir.mkdirs()
+        headersDir.mkdirs()
+
+        val sevenDays = 7L * 24 * 60 * 60 * 1000
+
+        // -------------------------
+        // 1. download quickjs.zip
+        // -------------------------
+        val needDownloadZip =
+            !quickJsZip.exists() ||
+                    System.currentTimeMillis() - quickJsZip.lastModified() > sevenDays
+
+        if (needDownloadZip) {
+            logger.lifecycle("Fetching latest quickjs-build release (zip)...")
+
+            val apiUrl =
+                "https://api.github.com/repos/peacefulprogram/quickjs-build/releases/latest"
+
+            val releaseJson = URI(apiUrl)
+                .toURL()
+                .openStream()
+                .bufferedReader()
+                .use { it.readText() }
+
+            val zipUrl = Regex(
+                """"browser_download_url"\s*:\s*"([^"]*quickjs\.zip)""""
+            )
+                .find(releaseJson)
+                ?.groupValues
+                ?.get(1)
+                ?: error("quickjs.zip not found in latest release")
+
+            logger.lifecycle("Downloading zip: $zipUrl")
+
+            URI(zipUrl).toURL().openStream().use { input ->
+                quickJsZip.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } else {
+            logger.lifecycle("Using cached quickjs.zip")
+        }
+
+        // -------------------------
+        // 2. extract zip
+        // -------------------------
+        logger.lifecycle("Extracting quickjs.zip")
+
+        ZipInputStream(quickJsZip.inputStream()).use { zip ->
+            var entry = zip.nextEntry
+
+            while (entry != null) {
+                val target = File(libDir, entry.name)
+
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                } else {
+                    target.parentFile.mkdirs()
+                    target.outputStream().use {
+                        zip.copyTo(it)
+                    }
+                }
+
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+
+        // -------------------------
+        // 3. download quickjs.h
+        // -------------------------
+        val needDownloadHeader =
+            !quickJsHeader.exists() ||
+                    System.currentTimeMillis() - quickJsHeader.lastModified() > sevenDays
+
+        if (needDownloadHeader) {
+            logger.lifecycle("Downloading quickjs.h ...")
+
+            val headerUrl =
+                "https://raw.githubusercontent.com/quickjs-ng/quickjs/master/quickjs.h"
+
+            URI(headerUrl).toURL().openStream().use { input ->
+                quickJsHeader.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } else {
+            logger.lifecycle("Using cached quickjs.h")
+        }
+    }
+}

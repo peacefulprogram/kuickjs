@@ -4,11 +4,21 @@ kotlin = "2.3.10"
 android-minSdk = "24"
 android-compileSdk = "36"
 vanniktechMavenPublish = "0.36.0"
+kni = "2.1.0-fix"
+kni-central = "2.1.0"
+ksp = "2.3.9"
+coroutines = "1.10.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kni = { module = "com.dshatz.kni:jni", version.ref = "kni" }
+kni-processor = { module = "com.dshatz.kni:ksp", version.ref = "kni" }
+kni-annotations = { module = "com.dshatz.kni:annotations", version.ref = "kni" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 
 [plugins]
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version.ref = "vanniktechMavenPublish" }
+kni = { id = "com.dshatz.kni", version.ref = "kni-central" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

@@ -1,5 +1,6 @@
 pluginManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -8,10 +9,12 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
     }
 }
 
-rootProject.name = "multiplatform-library-template"
-include(":library")
+
+rootProject.name = "kuickjs"
+include(":core")

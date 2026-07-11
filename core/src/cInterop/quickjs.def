@@ -1,0 +1,53 @@
+package = quickjs
+headers = bridge.h quickjs.h
+headerFilter = bridge.h quickjs.h
+
+libraryPaths = lib
+# ---------------- Android ----------------
+staticLibraries.android_arm32 = libqjs-android-arm32.a
+staticLibraries.android_arm64 = libqjs-android-arm64.a
+staticLibraries.android_x64 = libqjs-android-x64.a
+staticLibraries.android_x86 = libqjs-android-x86.a
+
+# ---------------- iOS ----------------
+staticLibraries.ios_arm64 = libqjs-ios-arm64.a
+staticLibraries.ios_sim_arm64 = libqjs-ios-sim-arm64.a
+staticLibraries.ios_x64 = libqjs-ios-x64.a
+
+# ---------------- macOS ----------------
+staticLibraries.macos_arm64 = libqjs-macos-aarch64.a
+staticLibraries.macos_x64 = libqjs-macos-x64.a
+
+# ---------------- Linux ----------------
+staticLibraries.linux_arm64 = libqjs-linux-arm64.a
+staticLibraries.linux_x64 = libqjs-linux-x64.a
+
+# ---------------- tvOS ----------------
+staticLibraries.tvos_arm64 = libqjs-tvos-arm64.a
+staticLibraries.tvos_sim_arm64 = libqjs-tvos-sim-arm64.a
+staticLibraries.tvos_x64 = libqjs-tvos-x64.a
+
+# ---------------- watchOS ----------------
+staticLibraries.watchos_arm32 = libqjs-watchos-arm32.a
+staticLibraries.watchos_arm64 = libqjs-watchos-arm64.a
+staticLibraries.watchos_device_arm64 = libqjs-watchos-device-arm64.a
+staticLibraries.watchos_sim_arm64 = libqjs-watchos-sim-arm64.a
+staticLibraries.watchos_x64 = libqjs-watchos-x64.a
+
+# ---------------- Windows (MinGW) ----------------
+staticLibraries.mingw_x64 = libqjs-windows-x64.a
+
+
+noStringConversion = \
+	JS_Eval \
+	JS_NewString \
+	JS_FreeCString \
+	JS_ParseJSON_Kt \
+	JS_Eval_Kt
+
+---
+
+// Avoid types ending up in cnames.structs.* https://youtrack.jetbrains.com/issue/KT-49034
+
+typedef struct JSContext {} JSContext;
+typedef struct JSRuntime {} JSRuntime;
