@@ -11,5 +11,6 @@ xcuserdata
 .kotlin
 #So we don't accidentally commit our private keys
 *.gpg
-/core/lib/
-/core/headers/quickjs.h
+/kuickjs/lib/
+/kuickjs/headers/quickjs.h
+*.log
