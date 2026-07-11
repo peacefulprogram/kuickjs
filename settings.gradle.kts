@@ -17,4 +17,5 @@ dependencyResolutionManagement {
 
 
 rootProject.name = "kuickjs"
-include(":core")
+include(":kuickjs")
+include(":examples")
