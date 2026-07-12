@@ -13,6 +13,7 @@ import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.toLong
 import platform.posix.free
+import kotlin.native.concurrent.Worker
 import quickjs.JSContext
 import quickjs.JSRuntime
 import quickjs.JSValueHandle
@@ -55,12 +56,16 @@ import quickjs.JS_IsWeakMap_Kt
 import quickjs.JS_IsWeakRef_Kt
 import quickjs.JS_IsWeakSet_Kt
 import quickjs.JS_JSONStringify_Kt
+import quickjs.JS_NULL_Kt
+import quickjs.JS_NewArray_Kt
 import quickjs.JS_NewContext
 import quickjs.JS_NewError_Kt
 import quickjs.JS_NewBoolean_Kt
 import quickjs.JS_NewNumber_Kt
+import quickjs.JS_NewObject_Kt
 import quickjs.JS_NewRuntime
 import quickjs.JS_NewString_Kt
+import quickjs.JS_NewUint8ArrayCopy_Kt
 import quickjs.JS_ParseJSON_Kt
 import quickjs.JS_PromiseResult_Kt
 import quickjs.JS_PromiseState_Kt
@@ -76,7 +81,6 @@ import quickjs.JS_VALUE_GET_TAG_Kt
 internal typealias JsFunctionBridgeCallback = (CPointer<JSContext>?, Array<Long>) -> Long
 
 typealias JSValuePtr = CPointer<JSValueHandle>
-
 
 fun Long.toJSRuntime(): CPointer<JSRuntime>? {
     if (this == 0L) return null
@@ -137,6 +141,11 @@ internal actual fun getProperty(context: Long, obj: Long, name: String): Long {
     val ctx = context.toJSContext() ?: return 0
     val v = obj.toJsValue() ?: return 0
     return JS_GetPropertyStr_Kt(ctx, v, name).toLong()
+}
+
+@JniCall
+internal actual fun getException(context: Long): Long {
+    return JS_GetException_Kt(context.toJSContext()).toLong()
 }
 
 @JniCall
@@ -426,4 +435,24 @@ internal actual fun getPromiseResult(context: Long, promise: Long): Long {
 @JniCall
 internal actual fun getGlobalObject(context: Long): Long {
     return JS_GetGlobalObject_Kt(context.toCPointer()).toLong()
+}
+
+@JniCall
+internal actual fun jsNewObject(context: Long): Long {
+    return JS_NewObject_Kt(context.toCPointer()).toLong()
+}
+
+@JniCall
+internal actual fun jsNewArray(context: Long): Long {
+    return JS_NewArray_Kt(context.toCPointer()).toLong()
+}
+
+@JniCall
+internal actual fun setProperty(context: Long, obj: Long, name: String, value: Long) {
+    JS_SetPropertyStr_Kt(context.toCPointer(), obj.toCPointer(), name, value.toCPointer())
+}
+
+@JniCall
+internal actual fun jsNewNull(): Long {
+    return JS_NULL_Kt().toLong()
 }

@@ -136,7 +136,7 @@ static inline bool JS_IsDate_Kt(JSValueHandle *val) {
 }
 
 static inline void JS_FreeValue_Kt(JSContext *ctx, JSValueHandle *value) {
-    if(value != NULL) {
+    if (value != NULL) {
         JS_FreeValue(ctx, value->value);
         free(value);
     }
@@ -256,8 +256,7 @@ static inline JSValueHandle *JS_PromiseResult_Kt(JSContext *ctx, JSValueHandle *
 }
 
 static inline JSValueHandle *JS_NewCFunction_Kt(JSContext *ctx, JSCFunction *func,
-        const char *name, int length)
-{
+        const char *name, int length) {
     return wrap_js_value(JS_NewCFunction(ctx, func, name, length));
 }
 
@@ -295,7 +294,7 @@ static inline int JS_ToInt64_Kt(JSContext *ctx, int64_t *num, JSValueHandle *val
     return JS_ToInt64(ctx, num, val->value);
 }
 
-static  inline JSValue JS_EXCEPTION_Kt() {
+static inline JSValue JS_EXCEPTION_Kt() {
     return JS_EXCEPTION;
 }
 
@@ -306,4 +305,17 @@ static inline JSValue JS_UNDEFINED_Kt() {
 static inline JSValueHandle *JS_NewString_Kt(JSContext *ctx, const char *str) {
     return wrap_js_value(JS_NewString(ctx, str));
 }
+
+static inline JSValueHandle *JS_NewObject_Kt(JSContext *ctx) {
+    return wrap_js_value(JS_NewObject(ctx));
+}
+
+static inline JSValueHandle *JS_NULL_Kt() {
+    return wrap_js_value(JS_NULL);
+}
+
+static inline JSValueHandle *JS_NewUint8ArrayCopy_Kt(JSContext *ctx, const uint8_t *buf, int len) {
+    return wrap_js_value(JS_NewUint8ArrayCopy(ctx, buf, len));
+}
+
 #endif //QUICKJS_BRIDGE_KT_H

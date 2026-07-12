@@ -19,11 +19,48 @@ It provides a Kotlin API for creating JavaScript runtimes and contexts, evaluati
 
 The project is configured for JVM, Android Native, Linux, macOS, Windows MinGW, iOS, tvOS, and watchOS targets where supported by Kotlin Multiplatform and the bundled native dependencies.
 
+## Gradle Dependency
+
+Add the Maven Central repository and the `kuickjs` dependency to your Kotlin Multiplatform project:
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+commonMain.dependencies {
+    implementation("io.github.peacefulprogram:kuickjs:0.0.1")
+}
+```
+
+With a Gradle Version Catalog:
+
+```toml
+[versions]
+kuickjs = "0.0.1"
+
+[libraries]
+kuickjs = { module = "io.github.peacefulprogram:kuickjs", version.ref = "kuickjs" }
+```
+
+Then declare it in your source set:
+
+```kotlin
+commonMain.dependencies {
+    implementation(libs.kuickjs)
+}
+```
+
 ## Usage
+
+All JavaScript-related operations must run on the context's JavaScript thread. Use `runInJsThread` for context initialization, function registration, JavaScript evaluation, property access, function calls, and value conversion.
+
+`JsValue` instances own a native QuickJS value. Every value returned by `eval`, `getProperty`, array access, `invoke`, or `convertToJsValue` must be released. Prefer `use` for synchronous operations; it releases the value automatically even when the block throws.
 
 ```kotlin
 import io.github.peacefulprogram.kuickjs.JSContext
 import io.github.peacefulprogram.kuickjs.JsValue
+import io.github.peacefulprogram.kuickjs.use
 import kotlinx.coroutines.runBlocking
 
 fun main() = runBlocking {
@@ -31,23 +68,65 @@ fun main() = runBlocking {
         exception.printStackTrace()
     }
 
-    context.initialize()
+    try {
+        context.runInJsThread {
+            context.initialize()
 
-    context.defineFunction("add") { args ->
-        val left = (args[0] as JsValue.JsNumber).value
-        val right = (args[1] as JsValue.JsNumber).value
-        left + right
-    }
+            context.defineFunction("add") { args ->
+                val left = (args[0] as JsValue.JsNumber).value
+                val right = (args[1] as JsValue.JsNumber).value
+                left + right
+            }
 
-    context.runInJsThread {
-        val result = context.eval("add(1, 2)")
-        println((result as JsValue.JsNumber).value)
-        result.free()
+            context.eval("add(1, 2)")?.use { result ->
+                println((result as JsValue.JsNumber).value)
+            }
+
+            context.eval("({ name: 'kuickjs', version: 1 })")?.use { value ->
+                val objectValue = value as JsValue.JsObject
+                println(objectValue.toJsonString())
+                println(objectValue.keys())
+            }
+        }
+    } finally {
+        context.runInJsThread {
+            context.dispose()
+        }
     }
 }
 ```
 
-Functions can also be defined as asynchronous Kotlin functions. They are exposed to JavaScript as promise-returning functions and can be awaited from Kotlin using `JsValue.JsPromise.await()`.
+Values returned from nested operations must also be released. For example, both the property value and the object that owns it are managed independently:
+
+```kotlin
+context.runInJsThread {
+    context.eval("({ answer: 42 })")?.use { objectValue ->
+        (objectValue as JsValue.JsObject).getProperty("answer")?.use { answer ->
+            println(answer)
+        }
+    }
+}
+```
+
+Functions can also be defined as asynchronous Kotlin functions. They are exposed to JavaScript as promise-returning functions. The Promise itself must also be released after awaiting it:
+
+```kotlin
+val promise = context.runInJsThread {
+    context.eval("Promise.resolve(42)") as JsValue.JsPromise
+}
+
+try {
+    promise.await()?.use { value ->
+        println(value)
+    }
+} finally {
+    context.runInJsThread {
+        promise.free()
+    }
+}
+```
+
+Do not call QuickJS operations from an arbitrary thread or keep a `JsValue` after its context has been disposed. A value must be freed before its context is disposed.
 
 ## Project Structure
 

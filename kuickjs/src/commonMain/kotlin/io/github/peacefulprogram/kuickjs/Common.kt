@@ -30,6 +30,11 @@ internal expect fun getArrayValue(context: Long, array: Long, index: Int): Long
 internal expect fun getProperty(context: Long, obj: Long, name: String): Long
 
 @JniCall
+internal expect fun getException(context: Long): Long
+@JniCall
+internal expect fun setProperty(context: Long, obj: Long, name: String, value: Long)
+
+@JniCall
 internal expect fun jsValueToString(context: Long, value: Long): String
 
 @JniCall
@@ -151,7 +156,16 @@ internal expect fun jsNewString(context: Long, value: String): Long
 internal expect fun jsNewNumber(context: Long, value: Double): Long
 
 @JniCall
+internal expect fun jsNewObject(context: Long): Long
+
+@JniCall
+internal expect fun jsNewArray(context: Long): Long
+
+@JniCall
 internal expect fun jsNewBoolean(context: Long, value: Boolean): Long
+
+@JniCall
+internal expect fun jsNewNull(): Long
 
 @JniCall
 internal expect fun getGlobalObject(context: Long): Long

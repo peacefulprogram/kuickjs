@@ -3,8 +3,6 @@
 package io.github.peacefulprogram.kuickjs
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.incrementAndFetch
@@ -36,33 +34,38 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
     private var nextPromiseId = 0L
 
     @OptIn(DelicateCoroutinesApi::class)
-    val dispatcher = newFixedThreadPoolContext(1, "JSContext$contextId")
+    val dispatcher = newFixedThreadPoolContext(1, "JSContext-$contextId")
 
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
 
     suspend fun <R> runInJsThread(block: suspend () -> R): R {
         return withContext(dispatcher) {
+            check(!disposed) { "JSContext has been disposed" }
             block()
         }
     }
 
-    suspend fun initialize() {
-        runInJsThread {
-            if (initialized) {
-                return@runInJsThread
-            }
-            runtime = newRuntime()
-            context = newContext(runtime)
-            if (runtime == 0L || context == 0L) {
-                JsPlatform.freeContext(context)
-                freeRuntime(runtime)
-                throw RuntimeException("failed to initialize context")
-            }
+    fun initialize() {
+        check(!disposed) { "JSContext has been disposed" }
+        if (initialized) {
+            return
+        }
+        runtime = newRuntime()
+        context = newContext(runtime)
+        if (runtime == 0L || context == 0L) {
+            JsPlatform.freeContext(context)
+            freeRuntime(runtime)
+            runtime = 0L
+            context = 0L
+            throw RuntimeException("failed to initialize context")
+        }
+        try {
             JsPlatform.initializeJsFunctionBridge(context, contextId, bridgeFunctionName)
             val thenHandlerName = "_jsInternalThenHandler$contextId"
             val catchHandlerName = "_jsInternalCatchHandler$contextId"
-            defineFunction(thenHandlerName) { args ->
-                val id = (args.firstOrNull() as? JsValue.JsNumber)?.value?.toLong() ?: return@defineFunction null
+            defineFunctionInternal(thenHandlerName) { args ->
+                val id =
+                    (args.firstOrNull() as? JsValue.JsNumber)?.value?.toLong() ?: return@defineFunctionInternal null
                 val result = args.getOrNull(1)
                 if (result == null) {
                     resumePromise(id, null)
@@ -73,8 +76,9 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                 }
                 null
             }
-            defineFunction(catchHandlerName) { args ->
-                val id = (args.firstOrNull() as? JsValue.JsNumber)?.value?.toLong() ?: return@defineFunction null
+            defineFunctionInternal(catchHandlerName) { args ->
+                val id =
+                    (args.firstOrNull() as? JsValue.JsNumber)?.value?.toLong() ?: return@defineFunctionInternal null
                 val reason = args.getOrNull(1)
                 val ex = try {
                     promiseException(reason)
@@ -109,20 +113,41 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                     delay(15.milliseconds)
                 }
             }
-            contextMapLock.withLock {
-                contextMap[contextId] = this
-            }
+            contextMap[contextId] = this
+        } catch (e: Throwable) {
+            initialized = false
+            contextMap.remove(contextId)
+            JsPlatform.freeContext(context)
+            freeRuntime(runtime)
+            runtime = 0L
+            context = 0L
+            throw e
         }
     }
 
     fun eval(code: String, fileName: String = "unknown.js"): JsValue? {
-        return parseJsValue(evalJs(context, code, fileName))
+        checkReady()
+        return parseOwnedJsValue(evalJs(context, code, fileName))
     }
 
-    suspend fun defineFunction(name: String, function: (Array<JsValue?>) -> Any?) {
-        runInJsThread {
-            val idx = userFunctions.size
-            val code = """
+    fun defineFunction(name: String, function: (Array<JsValue?>) -> Any?) {
+        checkReady()
+        defineFunctionInternal(name, function)
+    }
+
+    fun getGlobalObject(): JsValue.JsObject {
+        checkReady()
+        return JsValue.JsObject(getGlobalObject(context), this)
+    }
+
+    internal fun getObjectProperty(obj: Long, name: String): JsValue? {
+        checkReady()
+        return parseOwnedJsValue(getProperty(context, obj, name))
+    }
+
+    private fun defineFunctionInternal(name: String, function: (Array<JsValue?>) -> Any?) {
+        val idx = userFunctions.size
+        val code = """
                 function $name(){
                     const args = [$idx, false];
                     for(let i = 0; i < arguments.length; i++) {
@@ -131,15 +156,18 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                     return $bridgeFunctionName.apply(null, args);
                 }
             """.trimIndent()
-            evalJs(context, code, "unknown.js").let { if (it != 0L) freeValue(context, it) }
-            userFunctions.add(function)
-        }
+        evalJs(context, code, "unknown.js").let { if (it != 0L) freeValue(context, it) }
+        userFunctions.add(function)
     }
 
-    suspend fun defineAsyncFunction(name: String, function: suspend (Array<JsValue?>) -> Any?) {
-        runInJsThread {
-            val idx = userAsyncFunctions.size
-            val code = """
+    fun defineAsyncFunction(name: String, function: suspend (Array<JsValue?>) -> Any?) {
+        checkReady()
+        defineAsyncFunctionInternal(name, function)
+    }
+
+    private fun defineAsyncFunctionInternal(name: String, function: suspend (Array<JsValue?>) -> Any?) {
+        val idx = userAsyncFunctions.size
+        val code = """
                 function $name(){
                     const args = [$idx, true];
                     for(let i = 0; i < arguments.length; i++) {
@@ -148,21 +176,23 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                     return $bridgeFunctionName.apply(null, args);
                 }
             """.trimIndent()
-            evalJs(context, code, "unknown.js").let { if (it != 0L) freeValue(context, it) }
-            userAsyncFunctions.add(function)
-        }
+        evalJs(context, code, "unknown.js").let { if (it != 0L) freeValue(context, it) }
+        userAsyncFunctions.add(function)
     }
 
     internal fun jsonStringify(value: JsValue.JsObject): String {
+        checkReady()
         return jsonStringify(context, value.ptr)
 
     }
 
     internal fun jsValueToString(value: JsValue): String {
+        checkReady()
         return jsValueToString(context, value.ptr) ?: ""
     }
 
     internal fun getArrayValue(index: Int, array: JsValue.JsArray): JsValue? {
+        checkReady()
         val ptr = getArrayValue(context, array.ptr, index)
         if (ptr == 0L) {
             return null
@@ -179,11 +209,13 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         }
     }
 
-     fun freeValue(value: JsValue) {
+    fun freeValue(value: JsValue) {
+        checkReady()
         freeValue(context, value.ptr)
     }
 
     private fun runPendingJob() {
+        checkReady()
         val ptr = executeJsPendingJob(runtime)
         if (ptr == 0L) {
             return
@@ -198,6 +230,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
 
     internal suspend fun awaitPromise(ptr: Long): JsValue? {
         return runInJsThread {
+            checkReady()
             require(ptr != 0L) { "promise value is null" }
             check(jsValueIsPromise(ptr)) { "value is not a Promise" }
             val state = getPromiseState(context, ptr)
@@ -311,7 +344,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         }
         if (jsValueIsException(ptr)) {
             try {
-                throw convertException(ptr)
+                throw convertPendingException()
             } finally {
                 freeValue(context, ptr)
             }
@@ -369,7 +402,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
             return null
         }
         if (jsValueIsException(ptr)) {
-            throw convertException(ptr)
+            throw convertPendingException()
         }
         if (jsValueIsError(ptr)) {
             val e = convertException(ptr)
@@ -443,6 +476,18 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         return JSException(message = message ?: "", stack = stack ?: "")
     }
 
+    private fun convertPendingException(): JSException {
+        val errorPtr = getException(context)
+        if (errorPtr == 0L) {
+            return JSException(message = "JavaScript execution failed", stack = "")
+        }
+        return try {
+            convertException(errorPtr)
+        } finally {
+            freeValue(context, errorPtr)
+        }
+    }
+
     @OptIn(ExperimentalContracts::class)
     private inline fun <R> Long.useValuePtr(block: (Long) -> R): R {
         contract {
@@ -455,50 +500,143 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         }
     }
 
-    private fun convertValueToJsValue(value: Any): JsValue {
-        if (value is JsValue) return value
+    fun parseJson(json: String): JsValue? {
+        checkReady()
+        return parseOwnedJsValue(parseJson(context, json))
+    }
 
-        val ptr = when (value) {
-            is String -> jsNewString(context, value)
-            is Char -> jsNewString(context, value.toString())
-            is Boolean -> jsNewBoolean(context, value)
-            is Number -> jsNewNumber(context, value.toDouble())
-            is UByte -> jsNewNumber(context, value.toDouble())
-            is UShort -> jsNewNumber(context, value.toDouble())
-            is UInt -> jsNewNumber(context, value.toDouble())
-            is ULong -> jsNewNumber(context, value.toDouble())
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun convertToJsValue(value: Any): JsValue {
+        if (value is JsValue) return value
+        return when (value) {
+            is String -> JsValue.JsString(ptr = jsNewString(context = context, value = value), context = this)
+            is Char -> JsValue.JsString(ptr = jsNewString(context = context, value = value.toString()), context = this)
+            is Boolean -> JsValue.JsBoolean(ptr = jsNewBoolean(context, value), context = this, value = value)
+            is Number -> JsValue.JsNumber(
+                ptr = jsNewNumber(context = context, value = value.toDouble()),
+                context = this,
+                value = value.toDouble()
+            )
+
+            is UByte -> JsValue.JsNumber(
+                ptr = jsNewNumber(context = context, value = value.toDouble()),
+                context = this,
+                value = value.toDouble()
+            )
+
+            is UShort -> JsValue.JsNumber(
+                ptr = jsNewNumber(context = context, value = value.toDouble()),
+                context = this,
+                value = value.toDouble()
+            )
+
+            is UInt -> JsValue.JsNumber(
+                ptr = jsNewNumber(context = context, value = value.toDouble()),
+                context = this,
+                value = value.toDouble()
+            )
+
+            is ULong -> JsValue.JsNumber(
+                ptr = jsNewNumber(context = context, value = value.toDouble()),
+                context = this,
+                value = value.toDouble()
+            )
+
+            is Map<*, *> -> {
+                val obj = jsNewObject(context)
+                try {
+                    value.forEach { (k, v) ->
+                        if (k == null || v == null) {
+                            return@forEach
+                        }
+                        val jsv = convertToJsValue(v)
+                        setProperty(context, obj, k.toString(), jsv.ptr)
+                        // free wrapper memory
+                        freeValueHandle(jsv.ptr)
+                    }
+                } catch (e: Throwable) {
+                    freeValue(context, obj)
+                    throw e
+                }
+                JsValue.JsObject(obj, this)
+            }
+
+            is Iterable<*> -> convertToJsValue(value.iterator())
+            is ByteArray -> convertToJsValue(value.iterator())
+            is IntArray -> convertToJsValue(value.iterator())
+            is BooleanArray -> convertToJsValue(value.iterator())
+            is ShortArray -> convertToJsValue(value.iterator())
+            is CharArray -> convertToJsValue(value.iterator())
+            is LongArray -> convertToJsValue(value.iterator())
+            is FloatArray -> convertToJsValue(value.iterator())
+            is DoubleArray -> convertToJsValue(value.iterator())
+            is UByteArray -> convertToJsValue(value.iterator())
+            is UIntArray -> convertToJsValue(value.iterator())
+            is ULongArray -> convertToJsValue(value.iterator())
+            is UShortArray -> convertToJsValue(value.iterator())
+
+            is Iterator<*> -> {
+                val arr = jsNewArray(context)
+                var len = 0
+                try {
+                    getProperty(context, arr, "push").useValuePtr { push ->
+                        for (item in value) {
+                            val itemValue = item?.let { convertToJsValue(it) }
+                            val itemPtr = itemValue?.ptr ?: jsNewNull()
+                            try {
+                                val callResult = checkJsResult(
+                                    callJsFunction(context, arr, push, longArrayOf(itemPtr))
+                                )
+                                freeValue(context, callResult)
+                            } finally {
+                                // The argument is borrowed by JS_Call and must be released here.
+                                freeValueHandle(itemPtr)
+                            }
+                            len++
+                        }
+                    }
+                } catch (e: Throwable) {
+                    freeValue(context, arr)
+                    throw e
+                }
+                JsValue.JsArray(ptr = arr, context = this, length = len)
+            }
+
             else -> throw IllegalArgumentException(
                 "unsupported Kotlin value type: ${value::class}"
             )
         }
-        if (ptr == 0L) {
-            throw IllegalStateException("failed to create JS value")
-        }
-        return parseJsValue(ptr) ?: run {
-            freeValue(context, ptr)
-            throw IllegalStateException("created JS value is not representable")
-        }
     }
 
     fun callJsFunction(function: JsValue.JsFunction, thisObj: JsValue?, args: Array<JsValue?>): JsValue? {
+        checkReady()
         val argPtrs = LongArray(args.size) { args[it]?.ptr ?: 0L }
         val result = callJsFunction(context, thisObj?.ptr ?: 0L, function.ptr, argPtrs)
         return parseOwnedJsValue(result)
     }
 
-    suspend fun dispose(){
-        if (disposed) return
-        runInJsThread {
-            if (disposed) return@runInJsThread
-            disposed = true
-            JsPlatform.freeContext(context)
-            freeRuntime(runtime)
-            contextMap.remove(contextId)
-            promiseMap.clear()
-            userFunctions.clear()
-            userAsyncFunctions.clear()
-            dispatcher.cancel()
-        }
+    fun dispose() {
+        check(!disposed) { "JSContext has already been disposed" }
+        check(initialized) { "JSContext has not been initialized" }
+        disposed = true
+        scope.cancel()
+        promiseMap.values.forEach { it.cancel() }
+        promiseMap.clear()
+        contextMap.remove(contextId)
+        JsPlatform.freeContext(context)
+        freeRuntime(runtime)
+        context = 0L
+        runtime = 0L
+        initialized = false
+        userFunctions.clear()
+        userAsyncFunctions.clear()
+        dispatcher.cancel()
+    }
+
+    private fun checkReady() {
+        check(!disposed) { "JSContext has been disposed" }
+        check(initialized) { "JSContext has not been initialized" }
     }
 
 
@@ -507,8 +645,6 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         init {
             JsPlatform.loadLibrary()
         }
-
-        private val contextMapLock = Mutex()
 
         private val contextMap = mutableMapOf<Long, JSContext>()
 
@@ -543,7 +679,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                         } else if (value == null || value === Unit) {
                             0L
                         } else {
-                            ctx.convertValueToJsValue(value).ptr
+                            ctx.convertToJsValue(value).ptr
                         }
                         try {
                             val callResult = callJsFunction(
@@ -604,7 +740,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                     if (result is JsValue) {
                         return dupValue(ctx.context, result.ptr)
                     }
-                    return ctx.convertValueToJsValue(result).ptr
+                    return ctx.convertToJsValue(result).ptr
                 } finally {
                     actualArgs.forEach { it?.let { value -> freeValue(ctx.context, value.ptr) } }
                 }

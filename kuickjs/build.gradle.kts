@@ -16,7 +16,7 @@ plugins {
 }
 
 group = "io.github.peacefulprogram"
-version = "1.0.0"
+version = "0.0.1"
 
 kni {
     autoWire {
@@ -148,50 +148,42 @@ kotlin {
     sourceSets.all {
         languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
     }
-//    sourceSets.forEach { sourceSet ->
-//        if (sourceSet.name.startsWith("jvm")
-//            || sourceSet.name.startsWith("android")
-//            || sourceSet.name.startsWith("linux")
-//            || sourceSet.name.startsWith("macos")
-//            || sourceSet.name.startsWith("mingw")
-//            ) {
-//            sourceSet.dependencies {
-//                api(libs.kni)
-//            }
-//        }
-//    }
 }
 
 mavenPublishing {
-    publishToMavenCentral()
 
+    publishToMavenCentral(automaticRelease = true)
     signAllPublications()
-
-    coordinates(group.toString(), "library", version.toString())
+    coordinates("io.github.peacefulprogram", "kuickjs", version.toString())
 
     pom {
         name = "kuickjs"
-        description = "A quickjs for kotlin multiplatform library."
+        description = "A Kotlin Multiplatform library for embedding the QuickJS-ng JavaScript engine."
         inceptionYear = "2024"
         url = "https://github.com/peacefulprogram/kuickjs"
         licenses {
             license {
-                name = "XXX"
-                url = "YYY"
-                distribution = "ZZZ"
+                name = "Apache License 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                distribution = "repo"
             }
         }
         developers {
             developer {
-                id = "XXX"
-                name = "YYY"
-                url = "ZZZ"
+                id = "peacefulprogram"
+                name = "peacefulprogram"
+                email = "jw4273@qq.com"
+                url = "https://github.com/peacefulprogram"
             }
         }
+        issueManagement {
+            system = "GitHub Issues"
+            url = "https://github.com/peacefulprogram/kuickjs/issues"
+        }
         scm {
-            url = "XXX"
-            connection = "YYY"
-            developerConnection = "ZZZ"
+            url = "https://github.com/peacefulprogram/kuickjs"
+            connection = "scm:git:git://github.com/peacefulprogram/kuickjs.git"
+            developerConnection = "scm:git:ssh://git@github.com/peacefulprogram/kuickjs.git"
         }
     }
 }
