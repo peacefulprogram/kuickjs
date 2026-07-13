@@ -1,5 +1,9 @@
 package io.github.peacefulprogram.kuickjs
 
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
+
 sealed class JsValue(internal val ptr: Long, internal val context: JSContext) {
     class JsNumber internal constructor(ptr: Long, context: JSContext, val value: Double) : JsValue(ptr, context)
     class JsBoolean internal constructor(ptr: Long, context: JSContext, val value: Boolean) : JsValue(ptr, context)
@@ -37,12 +41,13 @@ sealed class JsValue(internal val ptr: Long, internal val context: JSContext) {
         }
     }
 
-    class JsArray internal constructor(ptr: Long, context: JSContext, val length: Int) : JsObject(ptr, context) {
+    class JsArray internal constructor(ptr: Long, context: JSContext, val length: Int) : JsObject(ptr, context),
+        Iterable<JsValue?> {
         operator fun get(index: Int): JsValue? {
             return context.getArrayValue(index, this)
         }
 
-        operator fun iterator(): JsArrayIterator {
+        override operator fun iterator(): Iterator<JsValue?> {
             return JsArrayIterator(this)
         }
     }
@@ -80,7 +85,11 @@ sealed class JsValue(internal val ptr: Long, internal val context: JSContext) {
 
 }
 
-fun <T : JsValue, R> T.use(block: (T) -> R): R {
+@OptIn(ExperimentalContracts::class)
+inline fun <T : JsValue, R> T.use(block: (T) -> R): R {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
     try {
         return block(this)
     } finally {
@@ -89,13 +98,14 @@ fun <T : JsValue, R> T.use(block: (T) -> R): R {
 }
 
 
-class JsArrayIterator internal constructor(private val array: JsValue.JsArray) {
+private class JsArrayIterator(private val array: JsValue.JsArray): Iterator<JsValue?> {
     private var nextIndex = 0
-    operator fun hasNext(): Boolean {
+
+    override operator fun hasNext(): Boolean {
         return nextIndex < array.length
     }
 
-    operator fun next(): JsValue? {
+    override operator fun next(): JsValue? {
         return array[nextIndex++]
     }
 
