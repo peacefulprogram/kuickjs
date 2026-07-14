@@ -11,7 +11,7 @@ staticLibraries.android_x86 = libqjs-android-x86.a
 
 # ---------------- iOS ----------------
 staticLibraries.ios_arm64 = libqjs-ios-arm64.a
-staticLibraries.ios_sim_arm64 = libqjs-ios-sim-arm64.a
+staticLibraries.ios_simulator_arm64 = libqjs-ios-sim-arm64.a
 staticLibraries.ios_x64 = libqjs-ios-x64.a
 
 # ---------------- macOS ----------------
@@ -24,14 +24,14 @@ staticLibraries.linux_x64 = libqjs-linux-x64.a
 
 # ---------------- tvOS ----------------
 staticLibraries.tvos_arm64 = libqjs-tvos-arm64.a
-staticLibraries.tvos_sim_arm64 = libqjs-tvos-sim-arm64.a
+staticLibraries.tvos_simulator_arm64 = libqjs-tvos-sim-arm64.a
 staticLibraries.tvos_x64 = libqjs-tvos-x64.a
 
 # ---------------- watchOS ----------------
 staticLibraries.watchos_arm32 = libqjs-watchos-arm32.a
 staticLibraries.watchos_arm64 = libqjs-watchos-arm64.a
 staticLibraries.watchos_device_arm64 = libqjs-watchos-device-arm64.a
-staticLibraries.watchos_sim_arm64 = libqjs-watchos-sim-arm64.a
+staticLibraries.watchos_simulator_arm64 = libqjs-watchos-sim-arm64.a
 staticLibraries.watchos_x64 = libqjs-watchos-x64.a
 
 # ---------------- Windows (MinGW) ----------------
