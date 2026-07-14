@@ -293,3 +293,9 @@ val downloadQuickJsLib by tasks.registering {
         }
     }
 }
+
+tasks.forEach { task ->
+    if (task.name.startsWith("cinterop")) {
+        task.dependsOn(downloadQuickJsLib)
+    }
+}
