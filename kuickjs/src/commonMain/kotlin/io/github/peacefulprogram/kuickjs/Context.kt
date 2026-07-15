@@ -188,7 +188,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
 
     internal fun jsValueToString(value: JsValue): String {
         checkReady()
-        return jsValueToString(context, value.ptr) ?: ""
+        return jsValueToString(context, value.ptr)
     }
 
     internal fun getArrayValue(index: Int, array: JsValue.JsArray): JsValue? {
@@ -331,7 +331,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
             if (jsValueIsError(ptr)) {
                 convertException(ptr)
             } else {
-                JSException(message = jsValueToString(context, ptr) ?: "Promise rejected", stack = "")
+                JSException(message = jsValueToString(context, ptr), stack = "")
             }
         } finally {
             freeValue(context, ptr)
@@ -473,7 +473,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
         val stack = getProperty(context, errorPtr, "stack").useValuePtr {
             jsValueToString(context, it)
         }
-        return JSException(message = message ?: "", stack = stack ?: "")
+        return JSException(message = message, stack = stack)
     }
 
     private fun convertPendingException(): JSException {
@@ -668,7 +668,7 @@ class JSContext(val unhandledExceptionHandler: UnhandledExceptionHandler) {
                 val actualArgPtrs = args.slice(0 until args.size - 2).toTypedArray()
                 parseStarted = true
                 actualArgs = ctx.parseJsValues(actualArgPtrs)
-                val callbackArgs = actualArgs ?: error("failed to parse async function arguments")
+                val callbackArgs = actualArgs
                 val resolve = args[args.size - 2]
                 val reject = args[args.size - 1]
                 ctx.scope.launch(ctx.dispatcher) {
