@@ -226,9 +226,8 @@ val downloadQuickJsLib by tasks.registering {
             if (token?.isNotEmpty() == true) {
                 connection.setRequestProperty("Authorization", "Bearer $token")
             }
-            val releaseJson = URI(apiUrl)
-                .toURL()
-                .openStream()
+            val releaseJson = connection
+                .getInputStream()
                 .bufferedReader()
                 .use { it.readText() }
 
