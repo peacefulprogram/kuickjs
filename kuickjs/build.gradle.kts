@@ -202,6 +202,7 @@ val downloadQuickJsLib by tasks.registering {
     outputs.dir(headersDir)
 
     doLast {
+        val token = System.getenv("GITHUB_TOKEN")
         libDir.mkdirs()
         headersDir.mkdirs()
 
@@ -219,7 +220,12 @@ val downloadQuickJsLib by tasks.registering {
 
             val apiUrl =
                 "https://api.github.com/repos/peacefulprogram/quickjs-build/releases/latest"
-
+            val connection = URI(apiUrl)
+                .toURL()
+                .openConnection()
+            if (token?.isNotEmpty() == true) {
+                connection.setRequestProperty("Authorization", "Bearer $token")
+            }
             val releaseJson = URI(apiUrl)
                 .toURL()
                 .openStream()
